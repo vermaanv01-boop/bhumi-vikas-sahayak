@@ -28,9 +28,6 @@ import { DEMO_RESPONSES } from '../data/demoData';
  * }>}
  */
 export async function askQuestion({ question, language = 'en', location = 'bhopal' }) {
-  // Simulate minimal network latency (350ms) to ensure UI loading states function properly
-  await new Promise((resolve) => setTimeout(resolve, 350));
-
   const trimmed = (question || '').trim();
 
   if (!trimmed) {
@@ -44,6 +41,42 @@ export async function askQuestion({ question, language = 'en', location = 'bhopa
       sources: []
     };
   }
+
+  // 1. Attempt live query against Express backend RAG pipeline (/api/ask)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout for Mistral generation
+
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        question: trimmed,
+        language,
+        location
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.answer) {
+        return {
+          ...data,
+          isLive: true
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[assistantService] Live RAG endpoint not reachable, using local fallback:', err.message);
+  }
+
+  // 2. Offline / local fallback pattern matching on demo dataset
+  await new Promise((resolve) => setTimeout(resolve, 300));
 
   const lower = trimmed.toLowerCase();
 

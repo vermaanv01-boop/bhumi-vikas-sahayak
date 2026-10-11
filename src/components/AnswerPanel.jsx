@@ -12,6 +12,114 @@ import {
 } from 'lucide-react';
 import { UI_TRANSLATIONS } from '../data/demoData';
 
+function renderInline(text) {
+  if (!text) return text;
+  const parts = [];
+  const regex = /\*\*(.*?)\*\*/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    parts.push(<strong key={match.index}>{match[1]}</strong>);
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+}
+
+function MarkdownRenderer({ content }) {
+  if (!content) return null;
+
+  const blocks = content.split(/\n\n+/);
+
+  return (
+    <div className="formatted-markdown-body">
+      {blocks.map((block, idx) => {
+        const trimmed = block.trim();
+        if (!trimmed) return null;
+
+        if (trimmed === '---' || trimmed === '***') {
+          return <hr key={idx} className="md-hr" />;
+        }
+
+        if (trimmed.startsWith('#### ')) {
+          return <h4 key={idx} className="md-h4">{renderInline(trimmed.replace(/^####\s+/, ''))}</h4>;
+        }
+        if (trimmed.startsWith('### ')) {
+          return <h3 key={idx} className="md-h3">{renderInline(trimmed.replace(/^###\s+/, ''))}</h3>;
+        }
+        if (trimmed.startsWith('## ')) {
+          return <h2 key={idx} className="md-h2">{renderInline(trimmed.replace(/^##\s+/, ''))}</h2>;
+        }
+
+        const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+        if (lines.length >= 2 && lines.every((l) => l.startsWith('|') && l.endsWith('|'))) {
+          const headerCells = lines[0].split('|').slice(1, -1).map((c) => c.trim());
+          const dataRows = lines
+            .slice(1)
+            .filter((l) => !/^\|[-:| ]+\|$/.test(l))
+            .map((r) => r.split('|').slice(1, -1).map((c) => c.trim()));
+
+          return (
+            <div key={idx} className="md-table-wrapper">
+              <table className="md-table">
+                <thead>
+                  <tr>
+                    {headerCells.map((h, hIdx) => (
+                      <th key={hIdx}>{renderInline(h)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dataRows.map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx}>{renderInline(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || /^\d+\.\s+/.test(trimmed)) {
+          const listLines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean);
+          const isOrdered = /^\d+\.\s+/.test(listLines[0]);
+          if (isOrdered) {
+            return (
+              <ol key={idx} className="md-ol">
+                {listLines.map((item, iIdx) => (
+                  <li key={iIdx}>{renderInline(item.replace(/^\d+\.\s+/, ''))}</li>
+                ))}
+              </ol>
+            );
+          }
+          return (
+            <ul key={idx} className="md-ul">
+              {listLines.map((item, iIdx) => (
+                <li key={iIdx}>{renderInline(item.replace(/^[-*]\s+/, ''))}</li>
+              ))}
+            </ul>
+          );
+        }
+
+        return (
+          <p key={idx} className="md-p">
+            {renderInline(trimmed)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AnswerPanel({
   result,
   isLoading,
@@ -257,8 +365,11 @@ export default function AnswerPanel({
             <span className="pulse-dot" />
             <span>STATUTORY RULE MATCH</span>
           </span>
-          <span className="demo-disclaimer-pill" title="Demo response contract">
-            DEMO PREVIEW
+          <span
+            className={`demo-disclaimer-pill ${result.isLive ? 'live-rag-pill' : ''}`}
+            title={result.isLive ? 'Grounded AI response generated from MP Bhumi Vikas Niyam, 2012' : 'Static demo dataset response'}
+          >
+            {result.isLive ? 'AI RAG VERIFIED' : 'DEMO PREVIEW'}
           </span>
         </div>
 
@@ -293,7 +404,9 @@ export default function AnswerPanel({
 
       {/* Answer content */}
       <div className="answer-content-body">
-        <p className="answer-text">{result.answer}</p>
+        <div className="answer-text">
+          <MarkdownRenderer content={result.answer} />
+        </div>
       </div>
 
       {/* Statutory disclosure notice */}
@@ -399,6 +512,14 @@ export default function AnswerPanel({
           border: 1px solid var(--border-color);
           padding: 2px 6px;
           border-radius: 2px;
+          letter-spacing: 0.04em;
+        }
+
+        .demo-disclaimer-pill.live-rag-pill {
+          background-color: #DCFCE7;
+          color: #166534;
+          border-color: #BBF7D0;
+          font-weight: 600;
         }
 
         .panel-actions-group {
@@ -468,6 +589,87 @@ export default function AnswerPanel({
           font-size: 14.5px;
           color: #242926;
           line-height: 1.65;
+        }
+
+        .formatted-markdown-body .md-h2 {
+          font-size: 16.5px;
+          font-weight: 700;
+          color: var(--primary);
+          margin: 16px 0 8px 0;
+          line-height: 1.35;
+        }
+
+        .formatted-markdown-body .md-h3 {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--text-main);
+          margin: 14px 0 6px 0;
+          line-height: 1.35;
+        }
+
+        .formatted-markdown-body .md-h4 {
+          font-size: 13.5px;
+          font-weight: 600;
+          color: var(--text-muted);
+          margin: 10px 0 4px 0;
+        }
+
+        .formatted-markdown-body .md-p {
+          margin-bottom: 12px;
+          line-height: 1.65;
+        }
+
+        .formatted-markdown-body .md-hr {
+          border: 0;
+          border-top: 1px solid #E5E9E2;
+          margin: 16px 0;
+        }
+
+        .formatted-markdown-body .md-ul,
+        .formatted-markdown-body .md-ol {
+          margin: 8px 0 14px 20px;
+          padding: 0;
+          line-height: 1.6;
+        }
+
+        .formatted-markdown-body li {
+          margin-bottom: 5px;
+        }
+
+        .md-table-wrapper {
+          overflow-x: auto;
+          margin: 14px 0 16px 0;
+          border: 1px solid #DFE5DC;
+          border-radius: 4px;
+        }
+
+        .md-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+          text-align: left;
+        }
+
+        .md-table th {
+          background-color: #F1F4EE;
+          color: var(--text-main);
+          font-weight: 600;
+          padding: 8px 12px;
+          border-bottom: 1px solid #DFE5DC;
+        }
+
+        .md-table td {
+          padding: 8px 12px;
+          border-bottom: 1px solid #ECEFEA;
+          color: #333C36;
+        }
+
+        .md-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .md-table tr:nth-child(even) {
+          background-color: #FAFCF9;
         }
 
         .accuracy-notice-strip {
